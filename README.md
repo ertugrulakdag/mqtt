@@ -1,9 +1,9 @@
 # ERT
 
-#Publish (framework-dependent)
+# Publish (framework-dependent)
 dotnet publish -c Release -r win-x64 --self-contained=false -p:PublishSingleFile=false
 
-#Servisi cmd ile oluştur/başlat
+# Servisi cmd ile oluştur/başlat
 
 sc stop ERTMqttHost
 

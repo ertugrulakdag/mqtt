@@ -4,6 +4,7 @@
 dotnet publish -c Release -r win-x64 --self-contained=false -p:PublishSingleFile=false
 
 #Servisi cmd ile oluştur/başlat
+
 sc stop ERTMqttHost
 
 sc delete ERTMqttHost

@@ -6,7 +6,7 @@ namespace ERT.MqttClientWeb.Services
     public class MessageStore
     {
         private readonly ConcurrentQueue<MqttUiMessage> _queue = new();
-        private const int MaxItems = 100; // hafızada tutulacak maksimum satır
+        private const int MaxItems = 100;
 
         public void Add(MqttUiMessage msg)
         {

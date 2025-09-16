@@ -1,0 +1,188 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Vue + MQTT (WebSocket)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+    <style>
+        body {
+            padding: 1.5rem;
+        }
+
+        .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        }
+
+        .smallcell {
+            max-width: 520px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h1 class="h4 mb-0">MQTT Mesajları (Vue + WebSocket)</h1>
+            <p>MQTT VueJs Örneği Topic Adı(<b>topic-name</b>)</p>
+            <div>
+                <span class="badge" :class="isConnected ? 'text-bg-success' : 'text-bg-danger'">
+                    {{ isConnected ? 'Bağlı' : 'Bağlı değil' }}
+                </span>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label mono">WS URL</label>
+                        <input v-model="wsUrl" class="form-control mono" placeholder="ws://HOST:PORT/mqtt" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mono">ClientId</label>
+                        <input v-model="clientId" class="form-control mono" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mono">Kullanıcı Adı</label>
+                        <input v-model="username" class="form-control mono" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mono">Şifre</label>
+                        <input v-model="password" type="password" class="form-control mono" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label mono">Topic</label>
+                        <input v-model="topic" class="form-control mono" placeholder="topic-name" />
+                    </div>
+                </div>
+                <div class="mt-3 d-flex gap-2">
+                    <button class="btn btn-primary" :disabled="isConnected" @click="connect">Bağlan</button>
+                    <button class="btn btn-secondary" :disabled="!isConnected" @click="subscribe">Subscribe</button>
+                    <button class="btn btn-outline-danger" :disabled="!isConnected" @click="disconnect">Bağlantıyı Kes</button>
+                </div>
+                <div class="mt-2 text-muted small">
+                    Durum: <span class="mono">{{ status }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive shadow-sm rounded">
+            <table class="table table-striped table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width:70px;">#</th>
+                        <th>Topic</th>
+                        <th>Mesaj</th>
+                        <th style="width:220px;">Geldiği Tarih</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(m, i) in messages" :key="m.id">
+                        <td>{{ messages.length - i }}</td>
+                        <td class="mono">{{ m.topic }}</td>
+                        <td class="mono smallcell" :title="m.payload">{{ m.payload }}</td>
+                        <td>{{ new Date(m.ts).toLocaleString('tr-TR') }}</td>
+                    </tr>
+                    <tr v-if="messages.length === 0">
+                        <td colspan="4" class="text-muted">Henüz mesaj yok.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            setup() {
+                // ---- CONFIG (varsayılanlar) ----
+                const wsUrl = ref('mqtt://213.238.168.103:8083'); // ÖRN: MQTTnet WebSocket endpoint
+                const clientId = ref('web-' + Math.random().toString(16).slice(2));
+                const username = ref('ert');
+                const password = ref('akd');
+                const topic = ref('topic-name');
+
+                // ---- STATE ----
+                const isConnected = ref(false);
+                const status = ref('Hazır');
+                const messages = ref([]);  // { id, topic, payload, ts }
+                const MAX_ROWS = 200;
+
+                let client = null;
+
+                function setStatus(s) {
+                    status.value = s;
+                    // console.log(s);
+                }
+
+                function connect() {
+                    try {
+                        setStatus('Bağlanılıyor...');
+                        // mqtt.js connect
+                        client = mqtt.connect(wsUrl.value, {
+                            clientId: clientId.value,
+                            username: username.value || undefined,
+                            password: password.value || undefined,
+                            clean: true,
+                            reconnectPeriod: 2000,   // otomatik retry (ms)
+                            connectTimeout: 10_000,  // 10 sn
+                        });
+
+                        client.on('connect', () => {
+                            isConnected.value = true;
+                            setStatus('Bağlandı');
+                        });
+
+                        client.on('reconnect', () => setStatus('Yeniden bağlanıyor...'));
+                        client.on('close', () => { isConnected.value = false; setStatus('Bağlantı kapandı'); });
+                        client.on('error', (err) => { setStatus('Hata: ' + (err?.message || err)); });
+
+                        client.on('message', (tp, payload) => {
+                            const text = payload ? new TextDecoder().decode(payload) : '';
+                            messages.value.unshift({
+                                id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random()),
+                                topic: tp,
+                                payload: text,
+                                ts: Date.now()
+                            });
+                            if (messages.value.length > MAX_ROWS) messages.value.length = MAX_ROWS;
+                        });
+
+                    } catch (e) {
+                        setStatus('Bağlantı kurulamadı: ' + e);
+                    }
+                }
+
+                function subscribe() {
+                    if (!client || !isConnected.value) { setStatus('Önce bağlanın.'); return; }
+                    client.subscribe(topic.value, { qos: 0 }, (err, granted) => {
+                        if (err) { setStatus('Subscribe hata: ' + err); return; }
+                        setStatus('Subscribed: ' + JSON.stringify(granted));
+                    });
+                }
+
+                function disconnect() {
+                    if (!client) return;
+                    client.end(true, {}, () => {
+                        isConnected.value = false;
+                        setStatus('Bağlantı kesildi');
+                    });
+                }
+
+                return {
+                    wsUrl, clientId, username, password, topic,
+                    isConnected, status, messages,
+                    connect, subscribe, disconnect
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

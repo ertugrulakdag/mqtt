@@ -1,0 +1,92 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Message Page";
+}
+
+<div class="container py-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h1 class="h4 mb-0">MQTT Mesajları (Topic Adı:<b>topic-name</b>)</h1>
+        <div>
+            <span class="me-2 small text-muted">Toplam</span>
+            <span class="badge text-bg-secondary" id="msgCount">0</span>
+        </div>
+    </div>
+
+    <div class="table-responsive shadow-sm rounded">
+        <table class="table table-striped table-hover align-middle mb-0" id="msgTable">
+            <thead class="table-dark">
+                <tr>
+                    <th style="width:70px;">#</th>
+                    <th>Topic</th>
+                    <th>Mesaj</th>
+                    <th style="width:220px;">Geldiği Tarih</th>
+                </tr>
+            </thead>
+            <tbody>
+               
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const tbody   = document.querySelector("#msgTable tbody");
+            const counter = document.getElementById("msgCount");
+            const TAKE    = 10;
+            const PERIOD  = 1000; 
+
+            function renderRows(items) {
+                tbody.innerHTML = "";
+                let idx = 0;
+                for (const x of items) {
+                    idx++;
+                    const tr = document.createElement("tr");
+
+                    const tdNo = document.createElement("td");
+                    tdNo.textContent = idx;
+
+                    const tdTopic = document.createElement("td");
+                    tdTopic.textContent = x.topic ?? x.Topic ?? "";
+
+                    const tdPayload = document.createElement("td");
+                    const text = (x.payload ?? x.Payload ?? "").toString();
+                    const display = text.length > 140 ? text.substring(0, 140) + "…" : text;
+                    tdPayload.textContent = display;
+                    if (text.length > 140) {
+                        tdPayload.title = text; 
+                    }
+
+                    const tdDate = document.createElement("td");
+                    const iso = x.receivedAt ?? x.ReceivedAt;
+                    const d = iso ? new Date(iso) : new Date();
+                    tdDate.textContent = d.toLocaleString("tr-TR");
+
+                    tr.appendChild(tdNo);
+                    tr.appendChild(tdTopic);
+                    tr.appendChild(tdPayload);
+                    tr.appendChild(tdDate);
+
+                    tbody.appendChild(tr);
+                }
+                counter.textContent = items.length.toString();
+            }
+
+            async function refresh() {
+                try {
+                    const res = await fetch(`/api/messages?take=${TAKE}`, { cache: "no-store" });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    renderRows(data);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            refresh();
+            setInterval(refresh, PERIOD);
+        })();
+    </script>
+}

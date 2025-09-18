@@ -1,20 +1,27 @@
 ﻿<!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <title>Vue + MQTT (WebSocket)</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MQTT Web İstemcisi (MQTT.js)</title>
+
+    <!-- Bootstrap sadece görünüm için -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+
+    <!-- MQTT.js (UMD) -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
     <style>
         body {
-            padding: 1.5rem;
+            padding: 1.25rem;
+        }
+
+        textarea {
+            font-family: ui-monospace, Menlo, Consolas, monospace;
         }
 
         .mono {
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+            font-family: ui-monospace, Menlo, Consolas, monospace;
         }
 
         .smallcell {
@@ -23,166 +30,381 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        #log {
+            height: 200px;
+            overflow: auto;
+        }
+
+        .badge-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
     </style>
 </head>
 <body>
-    <div id="app" class="container">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-            <h1 class="h4 mb-0">MQTT Mesajları (Vue + WebSocket)</h1>
-            <p>MQTT VueJs Örneği Topic Adı(<b>topic-name</b>)</p>
-            <div>
-                <span class="badge" :class="isConnected ? 'text-bg-success' : 'text-bg-danger'">
-                    {{ isConnected ? 'Bağlı' : 'Bağlı değil' }}
-                </span>
-            </div>
-        </div>
+    <div class="container">
+        <h1 class="mb-3">MQTT Web İstemcisi</h1>
 
+        <!-- CONFIG - appsettings karşılığı -->
+        <script>
+            // appsettings.json'daki değerlerin web tarafındaki karşılığı
+            // Not: Tarayıcı WS kullanır. Port'u WS portunla değiştirmen gerekebilir (ör: 9001).
+            const AppConfig = {
+                MqttClient: {
+                    ClientId: "ert-mqtt-client-web-js",
+                    Username: "ert",
+                    Password: "akd",
+                    Host: "213.238.168.103",
+                    Port: 1883   // <--- Bu port WS portu olmalı (örn: 9001). 1883 TCP'ye tarayıcıdan bağlanılmaz.
+                }
+            };
+        </script>
+
+        <!-- Bağlantı Kartı -->
         <div class="card mb-3">
             <div class="card-body">
-                <div class="row g-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="card-title mb-0">Bağlantı</h5>
+                    <div>
+                        <span id="statusDot" class="badge-dot bg-secondary"></span>
+                        <span id="statusText" class="mono text-secondary">disconnected</span>
+                    </div>
+                </div>
+
+                <div class="row g-3">
                     <div class="col-md-4">
-                        <label class="form-label mono">WS URL</label>
-                        <input v-model="wsUrl" class="form-control mono" placeholder="ws://HOST:PORT/mqtt" />
+                        <label class="form-label">Host</label>
+                        <input id="host" class="form-control mono" />
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label mono">ClientId</label>
-                        <input v-model="clientId" class="form-control mono" />
+                        <label class="form-label">Port (WS)</label>
+                        <input id="port" type="number" class="form-control mono" />
                     </div>
                     <div class="col-md-2">
-                        <label class="form-label mono">Kullanıcı Adı</label>
-                        <input v-model="username" class="form-control mono" />
+                        <label class="form-label">Protocol</label>
+                        <select id="protocol" class="form-select mono">
+                            <option value="auto">auto (page → ws/wss)</option>
+                            <option value="ws">ws</option>
+                            <option value="wss">wss</option>
+                        </select>
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label mono">Şifre</label>
-                        <input v-model="password" type="password" class="form-control mono" />
+                    <div class="col-md-4">
+                        <label class="form-label">ClientId</label>
+                        <input id="clientId" class="form-control mono" />
                     </div>
-                    <div class="col-md-2">
-                        <label class="form-label mono">Topic</label>
-                        <input v-model="topic" class="form-control mono" placeholder="topic-name" />
+
+                    <div class="col-md-4">
+                        <label class="form-label">Username</label>
+                        <input id="username" class="form-control mono" />
                     </div>
-                </div>
-                <div class="mt-3 d-flex gap-2">
-                    <button class="btn btn-primary" :disabled="isConnected" @click="connect">Bağlan</button>
-                    <button class="btn btn-secondary" :disabled="!isConnected" @click="subscribe">Subscribe</button>
-                    <button class="btn btn-outline-danger" :disabled="!isConnected" @click="disconnect">Bağlantıyı Kes</button>
-                </div>
-                <div class="mt-2 text-muted small">
-                    Durum: <span class="mono">{{ status }}</span>
+                    <div class="col-md-4">
+                        <label class="form-label">Password</label>
+                        <input id="password" type="password" class="form-control mono" />
+                    </div>
+
+                    <div class="col-md-12 d-flex gap-2">
+                        <button id="btnConnect" class="btn btn-success">Connect</button>
+                        <button id="btnDisconnect" class="btn btn-outline-danger" disabled>Disconnect</button>
+                        <button id="btnFillFromConfig" class="btn btn-outline-secondary">Config'le Doldur</button>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="alert alert-warning mb-0">
+                            <strong>Tarayıcı notu:</strong> Bu sayfa HTTPS üzerinden açılıyorsa <code>wss://</code> ile bağlanmanız gerekir.
+                            Broker tarafında WebSocket dinleyicisi (ör. <code>ws://host:9001</code> veya <code>wss://host:443/mqtt</code>) açık değilse bağlantı kurulamaz.
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="table-responsive shadow-sm rounded">
-            <table class="table table-striped table-hover align-middle mb-0">
-                <thead class="table-dark">
-                    <tr>
-                        <th style="width:70px;">#</th>
-                        <th>Topic</th>
-                        <th>Mesaj</th>
-                        <th style="width:220px;">Geldiği Tarih</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="(m, i) in messages" :key="m.id">
-                        <td>{{ messages.length - i }}</td>
-                        <td class="mono">{{ m.topic }}</td>
-                        <td class="mono smallcell" :title="m.payload">{{ m.payload }}</td>
-                        <td>{{ new Date(m.ts).toLocaleString('tr-TR') }}</td>
-                    </tr>
-                    <tr v-if="messages.length === 0">
-                        <td colspan="4" class="text-muted">Henüz mesaj yok.</td>
-                    </tr>
-                </tbody>
-            </table>
+        <!-- Subscribe / Publish -->
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Subscribe</h5>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">Topic</span>
+                            <input id="subTopic" class="form-control mono" placeholder="ör. sensors/+/temp">
+                            <span class="input-group-text">QoS</span>
+                            <select id="subQos" class="form-select mono" style="max-width:6rem">
+                                <option value="0" selected>0</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                            </select>
+                            <button id="btnSubscribe" class="btn btn-primary" disabled>Subscribe</button>
+                            <button id="btnUnsubscribe" class="btn btn-outline-secondary" disabled>Unsubscribe</button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Zaman</th>
+                                        <th>Topic</th>
+                                        <th>Payload</th>
+                                        <th>QoS</th>
+                                        <th>Retain</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="msgTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">Publish</h5>
+                        <div class="mb-2">
+                            <label class="form-label">Topic</label>
+                            <input id="pubTopic" class="form-control mono" placeholder="ör. sensors/room1/temp">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Payload</label>
+                            <textarea id="pubPayload" class="form-control" rows="5" placeholder='ör. {"t":23.5}'></textarea>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <label class="form-label">QoS</label>
+                                <select id="pubQos" class="form-select mono">
+                                    <option value="0" selected>0</option>
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                </select>
+                            </div>
+                            <div class="col-4 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input id="pubRetain" class="form-check-input" type="checkbox">
+                                    <label class="form-check-label" for="pubRetain">Retain</label>
+                                </div>
+                            </div>
+                            <div class="col-4 d-flex align-items-end justify-content-end">
+                                <button id="btnPublish" class="btn btn-success w-100" disabled>Publish</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log -->
+        <div class="card mt-3">
+            <div class="card-body">
+                <h5 class="card-title">Log</h5>
+                <pre id="log" class="bg-light p-2 border rounded mono mb-0"></pre>
+            </div>
         </div>
     </div>
 
     <script>
-        const { createApp, ref } = Vue;
+        const els = {
+            host: document.getElementById('host'),
+            port: document.getElementById('port'),
+            protocol: document.getElementById('protocol'),
+            clientId: document.getElementById('clientId'),
+            username: document.getElementById('username'),
+            password: document.getElementById('password'),
+            btnConnect: document.getElementById('btnConnect'),
+            btnDisconnect: document.getElementById('btnDisconnect'),
+            btnFillFromConfig: document.getElementById('btnFillFromConfig'),
+            statusDot: document.getElementById('statusDot'),
+            statusText: document.getElementById('statusText'),
+            // sub/pub
+            subTopic: document.getElementById('subTopic'),
+            subQos: document.getElementById('subQos'),
+            btnSubscribe: document.getElementById('btnSubscribe'),
+            btnUnsubscribe: document.getElementById('btnUnsubscribe'),
+            msgTableBody: document.getElementById('msgTableBody'),
+            pubTopic: document.getElementById('pubTopic'),
+            pubPayload: document.getElementById('pubPayload'),
+            pubQos: document.getElementById('pubQos'),
+            pubRetain: document.getElementById('pubRetain'),
+            btnPublish: document.getElementById('btnPublish'),
+            log: document.getElementById('log'),
+        };
 
-        createApp({
-            setup() {
-                // ---- CONFIG (varsayılanlar) ----
-                const wsUrl = ref('mqtt://213.238.168.103:8083'); // ÖRN: MQTTnet WebSocket endpoint
-                const clientId = ref('web-' + Math.random().toString(16).slice(2));
-                const username = ref('ert');
-                const password = ref('akd');
-                const topic = ref('topic-name');
+        let client = null;
+        let msgCount = 0;
 
-                // ---- STATE ----
-                const isConnected = ref(false);
-                const status = ref('Hazır');
-                const messages = ref([]);  // { id, topic, payload, ts }
-                const MAX_ROWS = 200;
+        function log(...args) {
+            const line = `[${new Date().toLocaleTimeString()}] ${args.join(' ')}`;
+            els.log.textContent += line + "\n";
+            els.log.scrollTop = els.log.scrollHeight;
+            console.log(...args);
+        }
 
-                let client = null;
+        function setStatus(state) {
+            const map = {
+                disconnected: ['bg-secondary', 'text-secondary'],
+                connecting: ['bg-warning', 'text-warning'],
+                connected: ['bg-success', 'text-success'],
+                error: ['bg-danger', 'text-danger'],
+            };
+            const [dot, text] = map[state] || map.disconnected;
+            els.statusDot.className = `badge-dot ${dot}`;
+            els.statusText.className = `mono ${text}`;
+            els.statusText.textContent = state;
+        }
 
-                function setStatus(s) {
-                    status.value = s;
-                    // console.log(s);
-                }
+        function fillFromConfig() {
+            // Unique clientId: ek bir rastgele son ek
+            const rnd = Math.random().toString(16).slice(2, 8);
+            els.clientId.value = `${AppConfig.MqttClient.ClientId}-${rnd}`;
+            els.username.value = AppConfig.MqttClient.Username || '';
+            els.password.value = AppConfig.MqttClient.Password || '';
+            els.host.value = AppConfig.MqttClient.Host || 'localhost';
+            els.port.value = AppConfig.MqttClient.Port || 9001; // WS port beklenir
+            els.protocol.value = 'auto';
+        }
 
-                function connect() {
-                    try {
-                        setStatus('Bağlanılıyor...');
-                        // mqtt.js connect
-                        client = mqtt.connect(wsUrl.value, {
-                            clientId: clientId.value,
-                            username: username.value || undefined,
-                            password: password.value || undefined,
-                            clean: true,
-                            reconnectPeriod: 2000,   // otomatik retry (ms)
-                            connectTimeout: 10_000,  // 10 sn
-                        });
+        function currentUrl() {
+            const host = els.host.value.trim();
+            const port = parseInt(els.port.value, 10);
+            const protoSel = els.protocol.value;
 
-                        client.on('connect', () => {
-                            isConnected.value = true;
-                            setStatus('Bağlandı');
-                        });
+            const pageProto = (location.protocol === 'https:') ? 'wss' : 'ws';
+            const proto = (protoSel === 'auto') ? pageProto : protoSel;
 
-                        client.on('reconnect', () => setStatus('Yeniden bağlanıyor...'));
-                        client.on('close', () => { isConnected.value = false; setStatus('Bağlantı kapandı'); });
-                        client.on('error', (err) => { setStatus('Hata: ' + (err?.message || err)); });
+            // Eğer reverse proxy ile path kullanıyorsan: `${proto}://${host}/mqtt`
+            return `${proto}://${host}:${port}`;
+        }
 
-                        client.on('message', (tp, payload) => {
-                            const text = payload ? new TextDecoder().decode(payload) : '';
-                            messages.value.unshift({
-                                id: crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random()),
-                                topic: tp,
-                                payload: text,
-                                ts: Date.now()
-                            });
-                            if (messages.value.length > MAX_ROWS) messages.value.length = MAX_ROWS;
-                        });
+        function setUiConnected(isConnected) {
+            els.btnConnect.disabled = isConnected;
+            els.btnDisconnect.disabled = !isConnected;
+            els.btnSubscribe.disabled = !isConnected;
+            els.btnUnsubscribe.disabled = !isConnected;
+            els.btnPublish.disabled = !isConnected;
+        }
 
-                    } catch (e) {
-                        setStatus('Bağlantı kurulamadı: ' + e);
-                    }
-                }
+        function connect() {
+            if (client) { try { client.end(true); } catch { } }
 
-                function subscribe() {
-                    if (!client || !isConnected.value) { setStatus('Önce bağlanın.'); return; }
-                    client.subscribe(topic.value, { qos: 0 }, (err, granted) => {
-                        if (err) { setStatus('Subscribe hata: ' + err); return; }
-                        setStatus('Subscribed: ' + JSON.stringify(granted));
-                    });
-                }
+            const url = currentUrl();
+            const options = {
+                clientId: els.clientId.value.trim() || `web-${Math.random().toString(16).slice(2, 8)}`,
+                username: els.username.value.trim() || undefined,
+                password: els.password.value || undefined,
+                clean: true,
+                keepalive: 60,
+                reconnectPeriod: 2000,  // otomatik yeniden bağlan
+            };
 
-                function disconnect() {
-                    if (!client) return;
-                    client.end(true, {}, () => {
-                        isConnected.value = false;
-                        setStatus('Bağlantı kesildi');
-                    });
-                }
+            log('Connecting to', url, 'as', options.clientId);
+            setStatus('connecting');
 
-                return {
-                    wsUrl, clientId, username, password, topic,
-                    isConnected, status, messages,
-                    connect, subscribe, disconnect
-                };
-            }
-        }).mount('#app');
+            client = mqtt.connect(url, options);
+
+            client.on('connect', (pkt) => {
+                setStatus('connected');
+                setUiConnected(true);
+                log('Connected. ConnAck:', JSON.stringify(pkt));
+            });
+
+            client.on('reconnect', () => {
+                setStatus('connecting');
+                log('Reconnecting...');
+            });
+
+            client.on('close', () => {
+                setStatus('disconnected');
+                setUiConnected(false);
+                log('Connection closed');
+            });
+
+            client.on('error', (err) => {
+                setStatus('error');
+                log('Error:', err?.message || err);
+            });
+
+            client.on('message', (topic, payload, packet) => {
+                msgCount++;
+                const tr = document.createElement('tr');
+                const tds = [
+                    msgCount,
+                    new Date().toLocaleTimeString(),
+                    topic,
+                    (() => {
+                        // payload Buffer -> string
+                        try { return new TextDecoder().decode(payload); }
+                        catch { return String(payload); }
+                    })(),
+                    packet.qos,
+                    packet.retain ? '✓' : '',
+                ];
+                tds.forEach(v => {
+                    const td = document.createElement('td');
+                    td.className = 'smallcell mono';
+                    td.textContent = v;
+                    tr.appendChild(td);
+                });
+                els.msgTableBody.prepend(tr);
+            });
+        }
+
+        function disconnect() {
+            if (!client) return;
+            log('Disconnect requested');
+            try { client.end(true, {}, () => log('Disconnected')); }
+            catch (e) { log('End error:', e?.message || e); }
+        }
+
+        async function subscribe() {
+            if (!client) return;
+            const topic = els.subTopic.value.trim();
+            const qos = Number(els.subQos.value);
+            if (!topic) { alert('Topic giriniz'); return; }
+            client.subscribe(topic, { qos }, (err, granted) => {
+                if (err) log('Subscribe error:', err.message || err);
+                else log('Subscribed:', JSON.stringify(granted));
+            });
+        }
+
+        async function unsubscribe() {
+            if (!client) return;
+            const topic = els.subTopic.value.trim();
+            if (!topic) { alert('Topic giriniz'); return; }
+            client.unsubscribe(topic, (err) => {
+                if (err) log('Unsubscribe error:', err.message || err);
+                else log('Unsubscribed:', topic);
+            });
+        }
+
+        async function publish() {
+            if (!client) return;
+            const topic = els.pubTopic.value.trim();
+            const payload = els.pubPayload.value;
+            const qos = Number(els.pubQos.value);
+            const retain = els.pubRetain.checked;
+
+            if (!topic) { alert('Topic giriniz'); return; }
+
+            client.publish(topic, payload, { qos, retain }, (err) => {
+                if (err) log('Publish error:', err.message || err);
+                else log('Published:', topic, `qos=${qos}`, retain ? 'retain' : '');
+            });
+        }
+
+        // Events
+        els.btnFillFromConfig.addEventListener('click', fillFromConfig);
+        els.btnConnect.addEventListener('click', connect);
+        els.btnDisconnect.addEventListener('click', disconnect);
+        els.btnSubscribe.addEventListener('click', subscribe);
+        els.btnUnsubscribe.addEventListener('click', unsubscribe);
+        els.btnPublish.addEventListener('click', publish);
+
+        // Varsayılanları doldur
+        fillFromConfig();
+        setUiConnected(false);
     </script>
 </body>
 </html>
